@@ -1,19 +1,9 @@
 import { X, findUrls, weightedLength } from '../../shared/index.js';
 import { AppError } from '../errors.js';
 import { X_SYSTEM, inputBlock } from '../prompts.js';
-import { sourceUrls } from './linkedin.js';
+import { ideaForModel as baseIdeaForModel, sourceUrls } from './common.js';
 
-function ideaForModel(idea, notes) {
-  return {
-    headline: idea.headline,
-    summary: idea.summary,
-    angle: idea.angle,
-    confirmedBySources: idea.confirmed,
-    proposedApplicationOurInference: idea.application,
-    sources: idea.sources.map((s) => ({ title: s.title, source: s.source, publishedAt: s.publishedAt, primary: s.primary, url: s.url })),
-    editorialNotes: notes || '',
-  };
-}
+const ideaForModel = (idea, notes) => baseIdeaForModel(idea, notes, { withUrls: true });
 
 export const xAdapter = {
   platform: 'x',

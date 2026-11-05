@@ -1,5 +1,5 @@
 import { AppError } from '../errors.js';
-import { timedFetch, readJson, retryAfterSeconds } from './http.js';
+import { timedFetch, retryAfterSeconds } from './http.js';
 
 const QUOTA_RE = /run out of searches|out of searches|searches? (for the month )?(are|is) exhausted|plan.*(limit|exceeded)|account has no/i;
 const NO_RESULTS_RE = /hasn'?t returned any results|no results/i;
@@ -38,8 +38,7 @@ export function createSerpClient(config, apiKey) {
       const url = `${base}/account?api_key=${encodeURIComponent(apiKey)}`;
       const res = await timedFetch(config.fetch, url, { method: 'GET' }, { timeoutMs: config.verifyTimeoutMs, provider: 'serpapi' });
       if (res.ok) return true;
-      const { body, text } = await readJson(res);
-      throw mapSerpError(res, body, text);
+      throw mapSerpError(res, res.body, res.text);
     },
 
     /** Google News search. Returns normalized raw items (dates still unparsed). */
@@ -55,7 +54,7 @@ export function createSerpClient(config, apiKey) {
         api_key: apiKey,
       });
       const res = await timedFetch(config.fetch, `${base}/search.json?${params}`, { method: 'GET' }, opts);
-      const { body, text } = await readJson(res);
+      const { body, text } = res;
       if (!res.ok) {
         if (NO_RESULTS_RE.test(String(body?.error || ''))) return [];
         throw mapSerpError(res, body, text);

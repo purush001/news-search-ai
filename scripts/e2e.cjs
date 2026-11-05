@@ -395,6 +395,22 @@ async function startApp(env) {
     }
   });
 
+  await step('after the server forgets the keys, the key error offers Edit API keys and the panel shows the real status', async () => {
+    const p = await context.newPage();
+    await p.goto(app.base);
+    await p.waitForSelector(sel('toggle-keys'));
+    assert((await p.textContent(sel('toggle-keys'))) === 'Edit API keys', 'page loaded believing keys are saved');
+    // the server now loses them (as after a restart) while the page still believes they exist
+    await p.evaluate(() => fetch('/api/session', { method: 'DELETE' }));
+    await p.click(sel('run-research'));
+    const alert = p.locator(`${sel('error-alert')}[data-code="keys_missing"]`);
+    await alert.waitFor();
+    await alert.getByRole('button', { name: 'Edit API keys' }).click();
+    await p.waitForSelector(sel('key-panel'));
+    await p.waitForFunction(() => [...document.querySelectorAll('[data-testid="key-panel"] .chip')].every((c) => c.textContent === 'not set'));
+    await p.close();
+  });
+
   await step('no page errors during the whole run', async () => {
     assert(pageErrors.length === 0, pageErrors.join(' | '));
   });

@@ -1,12 +1,26 @@
 import { AppError } from '../errors.js';
 import { redact } from '../redact.js';
 
-/** fetch with a timeout; maps transport failures to stable AppErrors. Never leaks URLs with keys. */
+/**
+ * fetch with one timeout that covers headers AND the body, so a provider that sends headers and then
+ * stalls cannot hang a request. Returns { ok, status, headers, text, body } (body = parsed JSON or null).
+ * Transport failures become stable AppErrors; URLs (which may carry keys) are never included.
+ */
 export async function timedFetch(fetchImpl, url, init, { timeoutMs, provider }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    return await fetchImpl(url, { ...init, signal: ctrl.signal });
+    const res = await fetchImpl(url, { ...init, signal: ctrl.signal });
+    const text = await res.text();
+    let body = null;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        /* not JSON */
+      }
+    }
+    return { ok: res.ok, status: res.status, headers: res.headers, text, body };
   } catch (err) {
     if (err?.name === 'AbortError' || ctrl.signal.aborted) {
       const secs = Math.max(1, Math.ceil(timeoutMs / 1000));
@@ -23,16 +37,6 @@ export async function timedFetch(fetchImpl, url, init, { timeoutMs, provider }) 
 
 export function providerName(p) {
   return p === 'openai' ? 'OpenAI' : p === 'serpapi' ? 'SerpAPI' : 'the provider';
-}
-
-export async function readJson(res) {
-  const text = await res.text();
-  if (!text) return { body: null, text };
-  try {
-    return { body: JSON.parse(text), text };
-  } catch {
-    return { body: null, text };
-  }
 }
 
 export function retryAfterSeconds(res) {

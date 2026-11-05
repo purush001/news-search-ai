@@ -1,24 +1,9 @@
 import { LINKEDIN, charCount, findUrls } from '../../shared/index.js';
 import { AppError } from '../errors.js';
 import { LINKEDIN_SYSTEM, inputBlock } from '../prompts.js';
+import { ideaForModel, sourceUrls } from './common.js';
 
 const text = (v) => (typeof v === 'string' ? v.replace(/\r\n/g, '\n').trim() : '');
-
-function ideaForModel(idea, notes) {
-  return {
-    headline: idea.headline,
-    summary: idea.summary,
-    angle: idea.angle,
-    confirmedBySources: idea.confirmed,
-    proposedApplicationOurInference: idea.application,
-    sources: idea.sources.map((s) => ({ title: s.title, source: s.source, publishedAt: s.publishedAt, primary: s.primary })),
-    editorialNotes: notes || '',
-  };
-}
-
-export function sourceUrls(idea) {
-  return [...new Set(idea.sources.map((s) => s.url))];
-}
 
 export function assemble(draft, item) {
   let out = `${draft.hook}\n\n${draft.body}\n\nSources:\n${sourceUrls(item.idea).join('\n')}`;

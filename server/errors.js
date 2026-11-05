@@ -5,9 +5,9 @@ import { redact } from './redact.js';
  * `transient` errors are retried by the drafting runner without consuming a repair attempt.
  */
 export const ERROR_CODES = {
-  invalid_openai_key: { status: 401, key: true },
-  invalid_serpapi_key: { status: 401, key: true },
-  keys_missing: { status: 401, key: true },
+  invalid_openai_key: { status: 401 },
+  invalid_serpapi_key: { status: 401 },
+  keys_missing: { status: 401 },
   model_access: { status: 403 },
   rate_limit: { status: 429 },
   quota_exhausted: { status: 402 },
@@ -15,6 +15,7 @@ export const ERROR_CODES = {
   network: { status: 502, transient: true },
   upstream_unavailable: { status: 502, transient: true },
   invalid_output: { status: 502, transient: true },
+  request_rejected: { status: 502 },
   search_failed: { status: 502 },
   stale_run: { status: 409 },
   bad_request: { status: 400 },
@@ -37,6 +38,7 @@ const HINTS = {
   network: 'Could not reach the provider. Check your connection and retry.',
   upstream_unavailable: 'The provider reported a temporary failure. Retry in a moment.',
   invalid_output: 'The model returned unusable output. Retry the draft.',
+  request_rejected: 'The provider refused the request itself, so retrying will not help. Check OPENAI_MODEL and that the model supports JSON output.',
   search_failed: 'The news search failed. Retry, or check your SerpAPI account.',
   stale_run: 'These results were replaced by a newer search. Run the search again.',
 };
@@ -63,10 +65,6 @@ export class AppError extends Error {
     if (this.detail) out.detail = this.detail;
     return out;
   }
-}
-
-export function isKeyError(code) {
-  return Boolean(ERROR_CODES[code]?.key);
 }
 
 /** Coerce anything thrown into an AppError whose message is safe to show. */

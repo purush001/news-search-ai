@@ -408,7 +408,6 @@ export async function runResearch(ctx, session, { mode, lastRunEnd }) {
     runId: randomBytes(6).toString('hex'),
     window,
     ideas: [],
-    allCandidates: search.candidates,
     nextNumber: 1,
     failedSearches: search.failures.length,
     warnings,

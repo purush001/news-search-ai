@@ -1,5 +1,5 @@
 import { AppError } from '../errors.js';
-import { timedFetch, readJson, retryAfterSeconds } from './http.js';
+import { timedFetch, retryAfterSeconds } from './http.js';
 
 const QUOTA_RE = /insufficient_quota|exceeded your current quota|billing|credit/i;
 
@@ -29,7 +29,8 @@ function mapOpenAIError(res, body, text, model) {
   if (res.status >= 500) {
     return new AppError('upstream_unavailable', `OpenAI returned a temporary error (${res.status}).`, opts);
   }
-  return new AppError('invalid_output', `OpenAI rejected the request (${res.status}).`, { ...opts, transient: false });
+  // Any other 4xx: the request itself was refused (unsupported parameter, bad model settings...). Retrying cannot help.
+  return new AppError('request_rejected', `OpenAI rejected the request (${res.status}).`, opts);
 }
 
 export function createOpenAIClient(config, apiKey) {
@@ -45,8 +46,7 @@ export function createOpenAIClient(config, apiKey) {
         provider: 'openai',
       });
       if (res.ok) return true;
-      const { body, text } = await readJson(res);
-      throw mapOpenAIError(res, body, text, config.model);
+      throw mapOpenAIError(res, res.body, res.text, config.model);
     },
 
     /** One JSON-mode chat completion. Returns the parsed JSON object. */
@@ -68,9 +68,8 @@ export function createOpenAIClient(config, apiKey) {
         },
         opts,
       );
-      const { body, text } = await readJson(res);
-      if (!res.ok) throw mapOpenAIError(res, body, text, config.model);
-      const choice = body?.choices?.[0];
+      if (!res.ok) throw mapOpenAIError(res, res.body, res.text, config.model);
+      const choice = res.body?.choices?.[0];
       const content = choice?.message?.content;
       if (choice?.finish_reason === 'length') {
         throw new AppError('invalid_output', 'The model output was cut off.', { provider: 'openai' });

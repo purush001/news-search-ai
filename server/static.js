@@ -16,8 +16,18 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+// The page handles API-key entry, so lock it down: same-origin scripts and requests only, no framing.
+export const SECURITY_HEADERS = {
+  'content-security-policy':
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; " +
+    "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff',
+};
+
 function plain(res, status, text) {
-  res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+  res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS });
   res.end(text);
 }
 
@@ -76,7 +86,7 @@ export function createStaticHandler(root) {
       res.writeHead(200, {
         'content-type': MIME[ext] || 'application/octet-stream',
         'content-length': found.size,
-        'x-content-type-options': 'nosniff',
+        ...SECURITY_HEADERS,
         'cache-control': found.file.includes(`${path.sep}assets${path.sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache',
       });
       if (req.method === 'HEAD') return res.end();

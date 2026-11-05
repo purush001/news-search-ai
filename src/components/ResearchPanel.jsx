@@ -1,16 +1,11 @@
-import { WINDOW } from '../../shared/index.js';
+import { effectiveWidenHours, widenChoices } from '../widen.js';
 import { formatDateTime, formatSpan } from '../format.js';
 
 export default function ResearchPanel({ mode, onMode, lastRunEnd, phase, disabled, onRun, research, onWiden, widenHours, onWidenHours }) {
   const running = phase !== 'idle';
   const missing = research?.missingTotal ?? 0;
-  const searched = research
-    ? Math.max(
-        (Date.parse(research.window.end) - Date.parse(research.window.start)) / 3_600_000,
-        ...research.widened.map((w) => (Date.parse(research.window.end) - Date.parse(w.start)) / 3_600_000),
-      )
-    : 0;
-  const options = WINDOW.widenOptions.filter((h) => h > searched + 0.5);
+  const options = widenChoices(research);
+  const selectedHours = effectiveWidenHours(options, widenHours);
 
   return (
     <section className="card" aria-labelledby="research-title" data-testid="research-panel">
@@ -91,7 +86,7 @@ export default function ResearchPanel({ mode, onMode, lastRunEnd, phase, disable
                 <div className="alert-actions row">
                   <label className="inline">
                     <span className="sr-only">Wider window</span>
-                    <select value={options.includes(widenHours) ? widenHours : options[0]} onChange={(e) => onWidenHours(Number(e.target.value))} disabled={running} data-testid="widen-select">
+                    <select value={selectedHours} onChange={(e) => onWidenHours(Number(e.target.value))} disabled={running} data-testid="widen-select">
                       {options.map((h) => (
                         <option key={h} value={h}>
                           Past {formatSpan(h)}
@@ -99,7 +94,7 @@ export default function ResearchPanel({ mode, onMode, lastRunEnd, phase, disable
                       ))}
                     </select>
                   </label>
-                  <button type="button" className="btn" onClick={onWiden} disabled={running} data-testid="widen">
+                  <button type="button" className="btn" onClick={() => onWiden(selectedHours)} disabled={running} data-testid="widen">
                     Search wider for missing
                   </button>
                 </div>

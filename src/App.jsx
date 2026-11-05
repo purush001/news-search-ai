@@ -45,7 +45,11 @@ export default function App() {
     };
   }, []);
 
-  const editKeys = useCallback(() => setKeysOpen(true), []);
+  // Always re-read the server's view when the key panel opens: the server may have forgotten the keys (restart).
+  const editKeys = useCallback(() => {
+    api.session().then(setSession, () => {});
+    setKeysOpen(true);
+  }, []);
   const haveKeys = Boolean(session?.hasOpenAI && session?.hasSerpapi);
 
   function applyResearch(res) {
@@ -73,12 +77,12 @@ export default function App() {
     }
   }
 
-  async function widen() {
+  async function widen(hours) {
     if (!research) return;
     setError(null);
     setPhase('widening');
     try {
-      applyResearch(await api.widen({ runId: research.runId, hours: widenHours }));
+      applyResearch(await api.widen({ runId: research.runId, hours }));
     } catch (e) {
       setError(errorInfo(e));
     } finally {
@@ -131,7 +135,7 @@ export default function App() {
               model: {session.model}
             </span>
           ) : null}
-          <button type="button" className="btn btn-small" onClick={() => setKeysOpen((v) => !v)} data-testid="toggle-keys">
+          <button type="button" className="btn btn-small" onClick={() => (keysOpen ? setKeysOpen(false) : editKeys())} data-testid="toggle-keys">
             {haveKeys ? 'Edit API keys' : 'Add API keys'}
           </button>
         </div>

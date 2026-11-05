@@ -1,9 +1,8 @@
-import { APPROVALS_REQUIRED, CATEGORIES, WINDOW, WINDOW_MODES, X, MAX_NOTES_CHARS, isValidHttpUrl } from '../shared/index.js';
+import { APPROVALS_REQUIRED, WINDOW_MODES, X, MAX_NOTES_CHARS, isValidHttpUrl } from '../shared/index.js';
 import { loadConfig } from './config.js';
-import { AppError, ERROR_CODES, isKeyError, toAppError } from './errors.js';
+import { AppError, toAppError } from './errors.js';
 import { createOpenAIClient } from './providers/openai.js';
 import { createSerpClient } from './providers/serpapi.js';
-import { redact } from './redact.js';
 import { ideasById, runResearch, widenResearch } from './research.js';
 import { createSessionStore, parseCookies, sessionCookie, COOKIE_NAME } from './sessions.js';
 import { draftIdeas } from './drafting/runner.js';
@@ -245,7 +244,5 @@ export function createApi(overrides = {}) {
     return true;
   }
 
-  return { handle, config, sessions, redact };
+  return { handle, config, sessions };
 }
-
-export { ERROR_CODES, isKeyError, CATEGORIES, WINDOW };

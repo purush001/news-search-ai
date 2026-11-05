@@ -10,7 +10,7 @@ All three agents use one model (default `gpt-6.1-sol`, override with `OPENAI_MOD
 
 ## Run it
 
-Requires Node 20+.
+Requires Node 22+ (the test script uses `node --test` globs).
 
 ```bash
 npm install
@@ -57,6 +57,8 @@ Screenshots go to `e2e-artifacts/` (git-ignored).
 - The server binds to `127.0.0.1`, rejects foreign `Host` headers, cross-origin writes and non-JSON bodies, and caps
   body size. The static server handles malformed paths (`/%` returns 400) and wraps every request so nothing thrown can
   kill the process.
+- `npm start` serves a strict Content-Security-Policy (same-origin scripts and requests only, no framing). Vite's dev server
+  does not, because HMR needs inline scripts.
 - The browser keeps one non-secret value: `nsai.lastRunEnd` in `localStorage`.
 
 ## Behaviour

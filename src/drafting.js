@@ -15,6 +15,18 @@ export function settingsProblem(settings) {
   return problems;
 }
 
+/**
+ * Splits ids into those whose settings are valid for this platform and those that are not.
+ * Batch actions (retry failed, regenerate all) must not send a request the server will reject as a whole.
+ */
+export function partitionBySettings(platform, ids, settings) {
+  const key = platform === 'linkedin' ? 'ctaUrl' : 'tweetCount';
+  const valid = [];
+  const invalid = [];
+  for (const id of ids) (settingsProblem(settings[id])[key] ? invalid : valid).push(id);
+  return { valid, invalid };
+}
+
 function runningItems(ids, prev = {}) {
   const out = { ...prev };
   for (const id of ids) out[id] = { ...(prev[id] || {}), status: 'running', error: null };
@@ -37,9 +49,24 @@ export function useDrafting() {
   }, []);
 
   const runPlatform = useCallback(
-    (platform, gen, ids) => {
+    (platform, gen, requestedIds) => {
       const current = draftsRef.current;
-      if (!current || current.gen !== gen || ids.length === 0) return;
+      if (!current || current.gen !== gen || requestedIds.length === 0) return;
+      const { valid: ids, invalid } = partitionBySettings(platform, requestedIds, current.settings);
+      if (invalid.length) {
+        const error = {
+          code: 'bad_request',
+          message: platform === 'linkedin' ? 'Fix the CTA URL before regenerating this post.' : 'Fix the tweet count before regenerating this thread.',
+          hint: null, retryAfter: null, detail: null, provider: null, status: 0,
+        };
+        // keep whatever draft exists; only annotate it
+        update(gen, (d) => {
+          const next = { ...d[platform].items };
+          for (const id of invalid) if (next[id]) next[id] = { ...next[id], error };
+          return { ...d, [platform]: { items: next } };
+        });
+      }
+      if (ids.length === 0) return;
       const items = ids.map((id) => {
         const s = current.settings[id];
         return platform === 'linkedin'

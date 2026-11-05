@@ -42,6 +42,13 @@ test('standalone server serves the app and survives malformed paths', async (t) 
 
   const home = await rawRequest(base, { path: '/' });
   assert.equal(home.status, 200);
+  const csp = home.headers['content-security-policy'];
+  assert.match(csp, /default-src 'self'/);
+  assert.match(csp, /frame-ancestors 'none'/);
+  assert.match(csp, /connect-src 'self'/);
+  assert.ok(!/script-src[^;]*unsafe/.test(csp), 'no inline/eval script allowance');
+  assert.equal(home.headers['x-frame-options'], 'DENY');
+  assert.equal(home.headers['referrer-policy'], 'no-referrer');
   assert.match(home.headers['content-type'], /text\/html/);
 
   for (const bad of ['/%', '/%E0%A4%A', '/foo/%zz', '/assets/%']) {
