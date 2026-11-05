@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Multi-agent research to LinkedIn / X content drafting app (Vite + React + Node).",
-  "engines": { "node": ">=22" },
+  "engines": { "node": "22.x" },
   "scripts": {
     "dev": "vite",
     "dev:mock": "node scripts/dev-mock.js",
