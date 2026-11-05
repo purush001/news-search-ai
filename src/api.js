@@ -44,7 +44,19 @@ async function call(method, path, body) {
   } catch {
     /* non-JSON response */
   }
-  if (!res.ok) throw new ApiError(json?.error || { message: `The server answered ${res.status}.` }, res.status);
+  if (!res.ok) {
+    if (!json?.error && res.status === 404) {
+      throw new ApiError(
+        {
+          code: 'api_not_found',
+          message: 'The API was not found on this host (the server answered 404).',
+          hint: 'On a hosted deployment the API function may not be deployed. See the README, section "Vercel".',
+        },
+        404,
+      );
+    }
+    throw new ApiError(json?.error || { message: `The server answered ${res.status}.` }, res.status);
+  }
   return json;
 }
 

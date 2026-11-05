@@ -32,14 +32,14 @@ export function rawRequest(base, { method = 'GET', path = '/', headers = {}, bod
 }
 
 /** A tiny client with a cookie jar, talking to the real HTTP server. */
-export function createClient(base) {
+export function createClient(base, defaultHeaders = {}) {
   let cookie = '';
   const client = {
     get cookie() {
       return cookie;
     },
     async request(method, path, body, extraHeaders = {}) {
-      const headers = { ...extraHeaders };
+      const headers = { ...defaultHeaders, ...extraHeaders };
       if (cookie) headers.cookie = cookie;
       let payload;
       if (body !== undefined) {

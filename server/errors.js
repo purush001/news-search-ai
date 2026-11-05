@@ -40,7 +40,7 @@ const HINTS = {
   invalid_output: 'The model returned unusable output. Retry the draft.',
   request_rejected: 'The provider refused the request itself, so retrying will not help. Check OPENAI_MODEL and that the model supports JSON output.',
   search_failed: 'The news search failed. Retry, or check your SerpAPI account.',
-  stale_run: 'These results were replaced by a newer search. Run the search again.',
+  stale_run: 'Run the search again.',
 };
 
 export class AppError extends Error {

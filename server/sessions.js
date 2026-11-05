@@ -52,7 +52,7 @@ export function parseCookies(header) {
   return out;
 }
 
-export function sessionCookie(id, { clear = false } = {}) {
-  const base = `${COOKIE_NAME}=${clear ? '' : id}; Path=/; HttpOnly; SameSite=Strict`;
+export function sessionCookie(id, { clear = false, secure = false } = {}) {
+  const base = `${COOKIE_NAME}=${clear ? '' : id}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`;
   return clear ? `${base}; Max-Age=0` : `${base}; Max-Age=${8 * 60 * 60}`;
 }

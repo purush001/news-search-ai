@@ -440,7 +440,7 @@ export async function runResearch(ctx, session, { mode, lastRunEnd }) {
 export async function widenResearch(ctx, session, { runId, hours }) {
   const research = session.research;
   if (!research || research.runId !== runId) {
-    throw new AppError('stale_run', 'These results were replaced by a newer search.');
+    throw new AppError('stale_run', 'These results are no longer available on the server (a newer search replaced them, or the server restarted).');
   }
   if (!Number.isInteger(hours) || hours < WINDOW.minWidenHours || hours > WINDOW.maxHours) {
     throw new AppError('bad_request', `Choose a window between ${WINDOW.minWidenHours} hours and 30 days.`);

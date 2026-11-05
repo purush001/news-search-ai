@@ -41,6 +41,28 @@ export function createApi(overrides = {}) {
     if (type !== 'application/json') throw new AppError('unsupported_media', 'Requests must use Content-Type: application/json.');
     const declared = Number(req.headers['content-length']);
     if (Number.isFinite(declared) && declared > config.maxBodyBytes) throw new AppError('payload_too_large', 'Request body is too large.');
+    // Some hosts (Vercel) parse JSON bodies before the handler runs and consume the stream.
+    const bad = () => new AppError('bad_request', 'The request body must be a JSON object.');
+    let pre;
+    try {
+      pre = req.body;
+    } catch {
+      throw bad();
+    }
+    if (pre !== undefined && pre !== null) {
+      let v = Buffer.isBuffer(pre) ? pre.toString('utf8') : pre;
+      if (typeof v === 'string') {
+        if (Buffer.byteLength(v) > config.maxBodyBytes) throw new AppError('payload_too_large', 'Request body is too large.');
+        try {
+          v = v.length ? JSON.parse(v) : {};
+        } catch {
+          throw bad();
+        }
+      }
+      if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad();
+      if (Buffer.byteLength(JSON.stringify(v)) > config.maxBodyBytes) throw new AppError('payload_too_large', 'Request body is too large.');
+      return v;
+    }
     const chunks = [];
     let size = 0;
     for await (const chunk of req) {
@@ -60,7 +82,9 @@ export function createApi(overrides = {}) {
 
   function checkOrigin(req) {
     const host = String(req.headers.host || '');
-    if (!LOCAL_HOST_RE.test(host)) throw new AppError('forbidden_origin', 'Unexpected Host header.');
+    // Locally the Host must be loopback (DNS-rebinding guard). A hosted deployment has a public host name,
+    // so there the same-origin check on writes below is what protects it.
+    if (!config.allowAnyHost && !LOCAL_HOST_RE.test(host)) throw new AppError('forbidden_origin', 'Unexpected Host header.');
     if (req.method === 'GET' || req.method === 'HEAD') return;
     const origin = req.headers.origin;
     if (origin !== undefined) {
@@ -137,13 +161,13 @@ export function createApi(overrides = {}) {
       session ??= sessions.create();
       if (supplied.openaiKey) session.openaiKey = supplied.openaiKey;
       if (supplied.serpapiKey) session.serpapiKey = supplied.serpapiKey;
-      send(res, 200, sessionStatus(session), isNew ? { 'set-cookie': sessionCookie(session.id) } : {});
+      send(res, 200, sessionStatus(session), isNew ? { 'set-cookie': sessionCookie(session.id, { secure: config.secureCookies }) } : {});
     },
 
     'DELETE /api/session': async (req, res) => {
       const session = currentSession(req);
       if (session) sessions.destroy(session.id);
-      send(res, 200, sessionStatus(null), { 'set-cookie': sessionCookie('', { clear: true }) });
+      send(res, 200, sessionStatus(null), { 'set-cookie': sessionCookie('', { clear: true, secure: config.secureCookies }) });
     },
 
     'POST /api/research': async (req, res) => {
@@ -189,7 +213,7 @@ export function createApi(overrides = {}) {
     const session = currentSession(req);
     const ctx = requireKeys(session);
     if (!session.research || session.research.runId !== body.runId) {
-      throw new AppError('stale_run', 'These results were replaced by a newer search.');
+      throw new AppError('stale_run', 'These results are no longer available on the server (a newer search replaced them, or the server restarted).');
     }
     if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > APPROVALS_REQUIRED) {
       throw bad(`Send between 1 and ${APPROVALS_REQUIRED} approved ideas.`);

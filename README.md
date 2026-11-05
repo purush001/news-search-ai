@@ -33,6 +33,22 @@ responses.
 Environment variables (all optional): `OPENAI_MODEL`, `OPENAI_BASE_URL`, `SERPAPI_BASE_URL`, `PORT` (`npm start`),
 `OPENAI_TIMEOUT_MS`, `SERPAPI_TIMEOUT_MS`. None of them holds a credential.
 
+## Vercel
+
+`vercel.json` and `api/[...path].js` run the same API handler as a Vercel function; Vercel builds the Vite app as static
+files. No environment variables are required (optionally `OPENAI_MODEL`). On Vercel (`VERCEL` is set) the handler accepts
+the public host name, still refuses cross-origin writes, and marks the session cookie `Secure`.
+
+**Limitation: sessions are in memory.** Keys and the current research results live in the memory of one function
+instance. Vercel may start a new instance or route a request to a different one, and then those are gone: you will see
+"Save both API keys first" or "These results are no longer available" and must re-enter the keys or search again. Warm,
+low-traffic use mostly works; it is not reliable. For reliable hosting, run `npm run build && npm start` on a
+long-running Node host, or move session state out of memory (for example an encrypted cookie plus a signed results token).
+
+`maxDuration` is 60 seconds (the most Hobby allows without Fluid compute). A search plus idea generation, or a draft with
+several repairs, can take longer; if you see timeouts, raise it on a plan that allows it. This setup was tested with a
+simulated Vercel request shape, not on Vercel itself.
+
 ## Tests
 
 ```bash
