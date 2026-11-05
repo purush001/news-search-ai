@@ -36,7 +36,7 @@ test('assembleIdeas ignores unknown source ids and requires at least one valid d
 test('URLs come from candidates; URLs the model writes into text are stripped', () => {
   const c1 = cand('c1', { url: 'https://real.example.com/story' });
   const { ideas } = assembleIdeas(
-    [raw({ headline: 'Look at https://evil.example/phish now', summary: 'See evil.com for more. Real text.', sourceIds: ['c1'], url: 'https://evil.example', sources: [{ url: 'https://evil.example' }] })],
+    [raw({ headline: 'Look at https://evil.example/phish now', summary: 'See www.evil.com for more. Real text.', sourceIds: ['c1'], url: 'https://evil.example', sources: [{ url: 'https://evil.example' }] })],
     byId(c1),
     { quotas: QUOTAS },
   );
@@ -181,4 +181,10 @@ test('parseMarker is strict', () => {
   assert.equal(parseMarker('2026-11-05'), null);
   assert.equal(parseMarker('Nov 5 2026'), null);
   assert.equal(parseMarker(12345), null);
+});
+
+test('plain domain mentions in idea text stay readable; only links are stripped', () => {
+  const c1 = cand('c1');
+  const { ideas } = assembleIdeas([raw({ summary: 'Reported by blogs.oracle.com today, see https://x.example/a.', sourceIds: ['c1'] })], byId(c1), { quotas: QUOTAS });
+  assert.equal(ideas[0].summary, 'Reported by blogs.oracle.com today, see.');
 });

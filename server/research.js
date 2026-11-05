@@ -175,9 +175,10 @@ function publicSource(c) {
 function cleanText(value, max) {
   if (typeof value !== 'string') return '';
   let s = value;
-  const urls = findUrls(s);
+  // Explicit links are removed; the model must never supply URLs. Plain domain mentions stay readable.
+  const urls = findUrls(s).filter((u) => u.kind === 'explicit' || /^www\./i.test(u.text));
   for (const u of [...urls].reverse()) s = s.slice(0, u.start) + s.slice(u.end);
-  return s.replace(/\s+/g, ' ').trim().slice(0, max);
+  return s.replace(/\s+/g, ' ').replace(/\s+([.,;:!?])/g, '$1').trim().slice(0, max);
 }
 
 /**

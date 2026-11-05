@@ -52,7 +52,7 @@ const defaults = {
         ideas.push({
           category: cat,
           headline: title,
-          summary: `${title}. Reported by ${c.source}; relevant to teams working on ${WORKFLOW[cat]}.`,
+          summary: `${title}. Relevant to teams working on ${WORKFLOW[cat]}.`,
           angle: `Explain what changed for ${WORKFLOW[cat]} and what to evaluate first.`,
           confirmed: c.snippet || title,
           application: `Inference: this could change how teams plan ${WORKFLOW[cat]}, but the source does not say so directly.`,
