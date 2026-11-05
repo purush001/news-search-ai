@@ -80,7 +80,12 @@ async function startApp(env) {
   page.on('console', (m) => {
     if (m.type() === 'error' && !/Failed to load resource.*(401|402|409|429|502|504)/.test(m.text())) pageErrors.push('console.error: ' + m.text());
   });
-  page.on('dialog', (d) => d.accept());
+  let dialogAction = 'accept';
+  const dialogs = [];
+  page.on('dialog', (d) => {
+    dialogs.push(d.message());
+    return dialogAction === 'accept' ? d.accept() : d.dismiss();
+  });
 
   const sel = (id) => `[data-testid="${id}"]`;
   const approveFirst = async (n, offset = 0) => {
@@ -271,6 +276,31 @@ async function startApp(env) {
     await page.waitForSelector(`${sel('linkedin-section')}[data-state="done"]`, { timeout: 20000 });
     const after = await page.locator(sel('linkedin-text')).evaluateAll((els) => els.map((e) => e.value));
     assert(after[0] === before[0] && after[1] === before[1], 'other posts untouched');
+  });
+
+  await step('a batch regenerate skips an invalid setting with a notice (not an error) that clears once it is fixed', async () => {
+    const field = page.locator(sel('x-card')).first().locator('input[type=number]');
+    await field.fill('');
+    await page.click(sel('x-regen-all'));
+    const notice = page.locator(sel('x-card')).first().locator(sel('draft-notice'));
+    await notice.waitFor();
+    assert(/fix the tweet count/i.test(await notice.textContent()), await notice.textContent());
+    assert((await page.locator(sel('x-card')).first().locator(sel('error-alert')).count()) === 0, 'not shown as an error');
+    assert((await page.locator(sel('x-card')).first().locator('textarea').count()) >= 1, 'existing draft kept');
+    await page.waitForSelector(`${sel('x-section')}[data-state="done"]`, { timeout: 20000 }); // the other threads regenerated
+    await field.fill('1');
+    await notice.waitFor({ state: 'detached' });
+  });
+
+  await step('starting a new search asks before discarding finished drafts, and declining keeps them', async () => {
+    dialogs.length = 0;
+    dialogAction = 'dismiss';
+    await page.click(sel('run-research'));
+    await page.waitForTimeout(400);
+    dialogAction = 'accept';
+    assert(dialogs.length === 1 && /Discard all drafts/.test(dialogs[0]), 'confirm shown: ' + dialogs.join('|'));
+    assert((await page.locator(sel('linkedin-card')).count()) === 3 && (await page.locator(sel('x-card')).count()) === 3, 'drafts kept');
+    assert(await page.isEnabled(sel('run-research')), 'no search was started');
   });
 
   console.log('Discard while in flight');

@@ -4,6 +4,14 @@ import AutoTextarea from './AutoTextarea.jsx';
 import CopyButton from './CopyButton.jsx';
 import ErrorAlert from './ErrorAlert.jsx';
 
+function Notice({ item }) {
+  return item.notice ? (
+    <p className="notice warn" role="status" data-testid="draft-notice">
+      {item.notice}
+    </p>
+  ) : null;
+}
+
 function Messages({ item }) {
   if (item.edited) return null; // server findings describe the generated text, not the edited one
   return (
@@ -84,6 +92,7 @@ export function LinkedInSection({ drafts, actions, onEditKeys }) {
         return (
           <article key={idea.id} className="draft" data-testid="linkedin-card" data-idea-id={idea.id} data-state={item.status}>
             <h3>{idea.headline}</h3>
+            <Notice item={item} />
             {running && !item.draft ? (
               <p className="status">
                 <span className="spinner" aria-hidden="true" /> Drafting…
@@ -152,6 +161,7 @@ export function XSection({ drafts, actions, onEditKeys }) {
               <h3>{idea.headline}</h3>
               {tweets.length ? <CopyButton text={tweets.map((t) => t.text).join('\n\n')} label="Copy thread" testId="copy-thread" /> : null}
             </div>
+            <Notice item={item} />
             {running && !item.draft ? (
               <p className="status">
                 <span className="spinner" aria-hidden="true" /> Drafting…

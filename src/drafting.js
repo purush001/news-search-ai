@@ -29,8 +29,30 @@ export function partitionBySettings(platform, ids, settings) {
 
 function runningItems(ids, prev = {}) {
   const out = { ...prev };
-  for (const id of ids) out[id] = { ...(prev[id] || {}), status: 'running', error: null };
+  for (const id of ids) out[id] = { ...(prev[id] || {}), status: 'running', error: null, notice: null };
   return out;
+}
+
+/** Drafts skipped by a batch action get a plain notice (not an error: nothing was sent, nothing failed). */
+export function annotateSkipped(items, ids, notice) {
+  const out = { ...items };
+  for (const id of ids) if (out[id]) out[id] = { ...out[id], notice };
+  return out;
+}
+
+/** Changing a setting makes any "fix this setting" notice for that idea obsolete. */
+export function clearNotices(drafts, id) {
+  const out = { ...drafts };
+  for (const platform of PLATFORMS) {
+    const item = drafts[platform]?.items?.[id];
+    if (item?.notice) out[platform] = { items: { ...drafts[platform].items, [id]: { ...item, notice: null } } };
+  }
+  return out;
+}
+
+/** True when at least one draft is finished, so discarding would lose work (including edits). */
+export function hasFinishedDrafts(drafts) {
+  return Boolean(drafts) && PLATFORMS.some((p) => Object.values(drafts[p].items).some((it) => it.status === 'ok'));
 }
 
 /**
@@ -54,17 +76,8 @@ export function useDrafting() {
       if (!current || current.gen !== gen || requestedIds.length === 0) return;
       const { valid: ids, invalid } = partitionBySettings(platform, requestedIds, current.settings);
       if (invalid.length) {
-        const error = {
-          code: 'bad_request',
-          message: platform === 'linkedin' ? 'Fix the CTA URL before regenerating this post.' : 'Fix the tweet count before regenerating this thread.',
-          hint: null, retryAfter: null, detail: null, provider: null, status: 0,
-        };
-        // keep whatever draft exists; only annotate it
-        update(gen, (d) => {
-          const next = { ...d[platform].items };
-          for (const id of invalid) if (next[id]) next[id] = { ...next[id], error };
-          return { ...d, [platform]: { items: next } };
-        });
+        const notice = platform === 'linkedin' ? 'Not regenerated: fix the CTA URL first.' : 'Not regenerated: fix the tweet count first.';
+        update(gen, (d) => ({ ...d, [platform]: { items: annotateSkipped(d[platform].items, invalid, notice) } }));
       }
       if (ids.length === 0) return;
       const items = ids.map((id) => {
@@ -149,7 +162,7 @@ export function useDrafting() {
   );
 
   const setSetting = useCallback((id, patch) => {
-    setDrafts((prev) => (prev ? { ...prev, settings: { ...prev.settings, [id]: { ...prev.settings[id], ...patch } } } : prev));
+    setDrafts((prev) => (prev ? clearNotices({ ...prev, settings: { ...prev.settings, [id]: { ...prev.settings[id], ...patch } } }, id) : prev));
   }, []);
 
   const editDraft = useCallback((platform, id, fn) => {

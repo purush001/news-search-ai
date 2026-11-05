@@ -12,6 +12,13 @@ function mapOpenAIError(res, body, text, model) {
   if (res.status === 401) {
     return new AppError('invalid_openai_key', 'OpenAI rejected the API key.', opts);
   }
+  if (res.status === 403 && /scope|permission/i.test(`${code} ${message}`)) {
+    // A valid but restricted key (e.g. no models-read scope) is a key problem, not a model problem.
+    return new AppError('invalid_openai_key', 'This OpenAI key does not have the permissions the app needs.', {
+      ...opts,
+      hint: 'Use a key that can read models and create chat completions, then save it again with Edit API keys.',
+    });
+  }
   if (res.status === 403 || res.status === 404 || /model_not_found/.test(code)) {
     if (res.status === 403 && !/model/i.test(code + message)) {
       return new AppError('invalid_openai_key', 'OpenAI refused this key for the request.', opts);

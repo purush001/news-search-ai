@@ -608,10 +608,11 @@ test('hook review: a self-reported "passes" is ignored; a failed review call onl
 });
 
 test('one agent can fail while the other succeeds, and their requests run at the same time', async (t) => {
+  let xFails = true;
   let xDuring = 0;
   let liDuring = 0;
   let overlapped = false;
-  const { client } = await ready(t, {
+  const { stack, client } = await ready(t, {
     openai: {
       respond: async (task) => {
         if (task === 'linkedin_draft') {
@@ -626,13 +627,14 @@ test('one agent can fail while the other succeeds, and their requests run at the
           await new Promise((r) => setTimeout(r, 150));
           overlapped ||= liDuring > 0;
           xDuring--;
-          return httpResponse(500, { error: { message: 'x agent down' } });
+          return xFails ? httpResponse(500, { error: { message: 'x agent down' } }) : undefined;
         }
         return undefined;
       },
     },
   });
   const { runId, ideas } = await approved(client);
+  const liCount = () => stack.openai.calls.filter((c) => c.task.startsWith('linkedin')).length;
   const [li, x] = await Promise.all([
     client.post('/api/draft/linkedin', { runId, items: draftItems(ideas) }),
     client.post('/api/draft/x', { runId, items: draftItems(ideas, () => ({ tweetCount: 3 })) }),
@@ -642,7 +644,16 @@ test('one agent can fail while the other succeeds, and their requests run at the
   assert.equal(x.status, 502);
   assert.equal(x.json.error.code, 'upstream_unavailable');
   assert.ok(overlapped, 'both agents were in flight together');
-  // the failed agent can be retried independently
+
+  // the failed agent can be retried on its own: the LinkedIn drafts are neither requested nor changed
+  xFails = false;
+  const liCallsBefore = (await client.get('/api/session')).status === 200 ? liCount() : 0;
+  const retry = await client.post('/api/draft/x', { runId, items: draftItems(ideas, () => ({ tweetCount: 3 })) });
+  assert.equal(retry.status, 200);
+  assert.ok(retry.json.results.every((r) => r.status === 'ok' && r.draft.tweets.length === 3));
+  assert.equal(liCount(), liCallsBefore, 'retrying X made no LinkedIn calls');
+  assert.deepEqual(retry.json.results.map((r) => r.ideaId), ideas.map((i) => i.id));
+  assert.ok(li.json.results.every((r) => r.status === 'ok'), 'the earlier LinkedIn results are still valid');
 });
 
 test('partial failure inside one agent: successful drafts are returned next to the failed one', async (t) => {

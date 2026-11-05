@@ -78,6 +78,7 @@ export async function startStack({ openai = {}, serp = {}, config = {} } = {}) {
     logger: (l) => logs.push(l),
     openaiTimeoutMs: 5000,
     serpTimeoutMs: 5000,
+    retryDelayMs: 5,
     ...config,
   });
   const server = createAppServer({ api, distDir: new URL('./nonexistent-dist', import.meta.url).pathname });

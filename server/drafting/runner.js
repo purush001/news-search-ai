@@ -28,15 +28,23 @@ export async function draftIdeas(ctx, adapter, items) {
   return settled.map(({ _err, ...r }) => r);
 }
 
+export const retryOptions = (ctx) => ({ retries: 2, delayMs: ctx.config.retryDelayMs });
+
 async function draftOne(ctx, adapter, item) {
   const call = (system, user, parse) =>
-    withTransientRetry(async () => parse(await ctx.openai.json({ system, user })));
+    withTransientRetry(async () => parse(await ctx.openai.json({ system, user })), retryOptions(ctx));
 
   const warnings = [];
+  const started = ctx.config.budgetClock();
+  const overBudget = () => ctx.config.budgetClock() - started > ctx.config.draftBudgetMs;
   let draft = await call(adapter.system, adapter.generateUser(item), (raw) => adapter.parse(raw, item));
   let issues = adapter.validate(draft, item);
 
   for (let attempt = 0; issues.length > 0 && attempt < REPAIR_ATTEMPTS; attempt++) {
+    if (overBudget()) {
+      warnings.push({ code: 'time_budget_exceeded', message: 'Drafting took too long, so remaining repairs were skipped. Edit the draft or regenerate it.' });
+      break;
+    }
     try {
       const repaired = await call(adapter.system, adapter.repairUser(draft, issues, item), (raw) => adapter.parse(raw, item));
       draft = repaired; // the last usable draft
@@ -51,7 +59,13 @@ async function draftOne(ctx, adapter, item) {
     }
   }
 
-  await reviewOpening(ctx, adapter, item, { get: () => draft, set: (d) => (draft = d) }, () => issues, (i) => (issues = i), warnings);
+  if (overBudget()) {
+    if (!warnings.some((w) => w.code === 'time_budget_exceeded')) {
+      warnings.push({ code: 'time_budget_exceeded', message: 'Drafting took too long, so the opening review was skipped.' });
+    }
+  } else {
+    await reviewOpening(ctx, adapter, item, { get: () => draft, set: (d) => (draft = d) }, () => issues, (i) => (issues = i), warnings);
+  }
 
   return {
     ideaId: item.idea.id,
@@ -65,7 +79,7 @@ async function draftOne(ctx, adapter, item) {
 async function reviewOpening(ctx, adapter, item, ref, getIssues, setIssues, warnings) {
   let verdict;
   try {
-    const raw = await withTransientRetry(() => ctx.openai.json({ system: REVIEW_SYSTEM, user: adapter.reviewUser(ref.get(), item) }));
+    const raw = await withTransientRetry(() => ctx.openai.json({ system: REVIEW_SYSTEM, user: adapter.reviewUser(ref.get(), item) }), retryOptions(ctx));
     verdict = normalizeVerdict(raw);
   } catch (err) {
     const e = toAppError(err);

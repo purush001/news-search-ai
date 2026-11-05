@@ -3,11 +3,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { COOKIE_NAME } from '../server/sessions.js';
 import { startStack, OPENAI_KEY, SERP_KEY } from './helpers.js';
 import { httpResponse } from '../server/mock/openai.js';
 import { listen } from '../server/mock/util.js';
 import { effectiveWidenHours, searchedHours, widenChoices } from '../src/widen.js';
-import { partitionBySettings } from '../src/drafting.js';
+import { annotateSkipped, clearNotices, hasFinishedDrafts, partitionBySettings } from '../src/drafting.js';
+import { withTransientRetry } from '../server/retry.js';
+import { AppError } from '../server/errors.js';
 import { ideaForModel, sourceUrls } from '../server/drafting/common.js';
 
 const H = 3_600_000;
@@ -99,7 +102,109 @@ test('engines.node is new enough for the node --test glob the test script uses',
   if (/\*/.test(pkg.scripts.test)) assert.ok(major >= 21, `engines ${pkg.engines.node} cannot expand test globs`);
 });
 
-test('research does not keep every collected candidate in session memory', async () => {
-  const src = await readFile(new URL('../server/research.js', import.meta.url), 'utf8');
-  assert.ok(!src.includes('allCandidates'));
+test('research keeps only what widening and drafting need in session memory', async (t) => {
+  const stack = await startStack();
+  t.after(() => stack.close());
+  const client = stack.client();
+  await client.saveKeys();
+  await client.post('/api/research', { mode: '24h' });
+  const sid = client.cookie.split('=')[1];
+  assert.ok(client.cookie.startsWith(`${COOKIE_NAME}=`));
+  const research = stack.api.sessions.get(sid).research;
+  assert.deepEqual(Object.keys(research).sort(), ['failedSearches', 'ideas', 'nextNumber', 'runId', 'warnings', 'widened', 'window']);
+});
+
+test('transient retries back off (delay, then double) and never wait after the last try or for non-transient errors', async () => {
+  const sleeps = [];
+  const sleep = async (ms) => sleeps.push(ms);
+  let n = 0;
+  await assert.rejects(
+    withTransientRetry(async () => { n++; throw new AppError('timeout', 'x'); }, { retries: 2, delayMs: 100, sleep }),
+    (e) => e.code === 'timeout',
+  );
+  assert.equal(n, 3);
+  assert.deepEqual(sleeps, [100, 200]);
+
+  sleeps.length = 0;
+  n = 0;
+  await assert.rejects(withTransientRetry(async () => { n++; throw new AppError('rate_limit', 'x'); }, { retries: 2, delayMs: 100, sleep }));
+  assert.equal(n, 1);
+  assert.deepEqual(sleeps, []);
+
+  n = 0;
+  const ok = await withTransientRetry(async () => { if (++n < 2) throw new AppError('upstream_unavailable', 'x'); return 'fine'; }, { retries: 2, delayMs: 50, sleep });
+  assert.equal(ok, 'fine');
+  assert.deepEqual(sleeps, [50]);
+});
+
+test('the real retry path waits between tries when configured', async (t) => {
+  let n = 0;
+  const stack = await startStack({
+    config: { retryDelayMs: 120 },
+    openai: { respond: (task) => (task === 'x_draft' && ++n <= 2 ? httpResponse(503, { error: { message: 'busy' } }) : undefined) },
+  });
+  t.after(() => stack.close());
+  const client = stack.client();
+  await client.saveKeys();
+  const r = (await client.post('/api/research', { mode: '24h' })).json;
+  const started = Date.now();
+  const res = await client.post('/api/draft/x', { runId: r.runId, items: [{ ideaId: r.ideas[0].id, tweetCount: 2 }] });
+  assert.equal(res.status, 200);
+  assert.ok(Date.now() - started >= 120 + 240 - 30, `waited between retries (${Date.now() - started}ms)`);
+});
+
+test('a draft that exceeds its time budget keeps the last usable draft, skips repairs and review, and says so', async (t) => {
+  let t0 = 0;
+  const stack = await startStack({
+    config: { draftBudgetMs: 1000, budgetClock: () => (t0 += 5000) }, // every look at the clock is 5s later
+  });
+  t.after(() => stack.close());
+  const client = stack.client();
+  await client.saveKeys();
+  const r = (await client.post('/api/research', { mode: '24h' })).json;
+  const res = await client.post('/api/draft/x', { runId: r.runId, items: [{ ideaId: r.ideas[0].id, notes: '[mock:overlong]', tweetCount: 3 }] });
+  assert.equal(res.status, 200);
+  const item = res.json.results[0];
+  assert.equal(item.status, 'ok');
+  assert.deepEqual(item.issues.map((i) => i.code), ['tweet_too_long']);
+  assert.ok(item.warnings.some((w) => w.code === 'time_budget_exceeded'));
+  assert.equal(stack.openai.calls.filter((c) => c.task === 'x_repair' || c.task === 'x_review').length, 0);
+});
+
+test('a restricted key (missing scope) is a key problem, not a model problem', async (t) => {
+  const stack = await startStack({ openai: { modelsNeedScope: true } });
+  t.after(() => stack.close());
+  const r = await stack.client().put('/api/session/keys', { openaiKey: OPENAI_KEY });
+  assert.equal(r.status, 401);
+  assert.equal(r.json.error.code, 'invalid_openai_key');
+  assert.match(r.json.error.message, /permissions/);
+  assert.match(r.json.error.hint, /Edit API keys/);
+  assert.ok(!/OPENAI_MODEL/.test(r.text));
+});
+
+test('skipped-draft notices are notices (not errors), clear when the setting changes, and never touch other ideas', () => {
+  const items = { a: { status: 'ok', draft: { x: 1 } }, b: { status: 'ok', draft: { x: 2 } } };
+  const annotated = annotateSkipped(items, ['a'], 'Not regenerated: fix the tweet count first.');
+  assert.equal(annotated.a.notice, 'Not regenerated: fix the tweet count first.');
+  assert.equal(annotated.a.error, undefined);
+  assert.equal(annotated.a.status, 'ok');
+  assert.equal(annotated.b.notice, undefined);
+  assert.equal(items.a.notice, undefined, 'input not mutated');
+
+  const drafts = { linkedin: { items: annotated }, x: { items: { a: { status: 'ok', notice: 'n' }, b: { status: 'ok' } } } };
+  const cleared = clearNotices(drafts, 'a');
+  assert.equal(cleared.linkedin.items.a.notice, null);
+  assert.equal(cleared.x.items.a.notice, null);
+  assert.equal(cleared.linkedin.items.b.notice, undefined);
+  assert.equal(clearNotices(drafts, 'zzz').linkedin, drafts.linkedin, 'unrelated ids leave state untouched');
+});
+
+test('hasFinishedDrafts is what guards every discard path', () => {
+  assert.equal(hasFinishedDrafts(null), false);
+  const running = { linkedin: { items: { a: { status: 'running' } } }, x: { items: { a: { status: 'running' } } } };
+  assert.equal(hasFinishedDrafts(running), false);
+  const errored = { linkedin: { items: { a: { status: 'error' } } }, x: { items: { a: { status: 'running' } } } };
+  assert.equal(hasFinishedDrafts(errored), false);
+  const one = { linkedin: { items: { a: { status: 'running' } } }, x: { items: { a: { status: 'ok' } } } };
+  assert.equal(hasFinishedDrafts(one), true);
 });

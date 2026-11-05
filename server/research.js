@@ -331,6 +331,7 @@ async function askForIdeas(ctx, { quotas, pool: candidates, window, avoid, exist
         avoid,
       }),
     }),
+    { retries: 2, delayMs: ctx.config.retryDelayMs },
   );
   return assembleIdeas(out.ideas, byId, { quotas, existing, nextNumber });
 }

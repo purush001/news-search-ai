@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { APPROVALS_REQUIRED, X } from '../shared/index.js';
 import { api, errorInfo } from './api.js';
-import { useDrafting } from './drafting.js';
+import { hasFinishedDrafts, useDrafting } from './drafting.js';
 import { loadLastRunEnd, saveLastRunEnd } from './storage.js';
 import ApprovalPanel from './components/ApprovalPanel.jsx';
 import ErrorAlert from './components/ErrorAlert.jsx';
@@ -60,7 +60,13 @@ export default function App() {
     }
   }
 
+  // Discarding finished drafts (edits included) always asks first, whichever button caused it.
+  function confirmDiscard() {
+    return !hasFinishedDrafts(drafts) || window.confirm('Discard all drafts, including any edits you made?');
+  }
+
   async function runResearch() {
+    if (!confirmDiscard()) return;
     setError(null);
     setPhase('searching');
     drafting.discard();
@@ -108,8 +114,7 @@ export default function App() {
   }
 
   function discard() {
-    const anyDone = drafts && ['linkedin', 'x'].some((p) => Object.values(drafts[p].items).some((it) => it.status === 'ok'));
-    if (anyDone && !window.confirm('Discard all drafts, including any edits you made?')) return;
+    if (!confirmDiscard()) return;
     drafting.discard();
   }
 

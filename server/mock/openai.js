@@ -150,7 +150,7 @@ function reviewDefault(input) {
  * `respond(task, input, ctx)` may override any answer; call ctx.default() for the stock one.
  * Editorial-note markers: [mock:overlong] [mock:weakhook] [mock:delay=MS].
  */
-export async function startMockOpenAI({ port = 0, respond, models = null, modelsDenied = [] } = {}) {
+export async function startMockOpenAI({ port = 0, respond, models = null, modelsDenied = [], modelsNeedScope = false } = {}) {
   const calls = [];
   const server = http.createServer(async (req, res) => {
     try {
@@ -173,6 +173,9 @@ export async function startMockOpenAI({ port = 0, respond, models = null, models
       if (req.method === 'GET' && modelMatch) {
         const model = decodeURIComponent(modelMatch[1]);
         calls.push({ task: 'verify', key, model });
+        if (modelsNeedScope) {
+          return sendJson(res, 403, { error: { message: 'You have insufficient permissions for this operation. Missing scopes: api.model.read.', type: 'invalid_request_error', code: null } });
+        }
         if (modelsDenied.includes(model) || (models && !models.includes(model))) {
           return sendJson(res, 404, { error: { message: `The model '${model}' does not exist or you do not have access to it.`, type: 'invalid_request_error', code: 'model_not_found' } });
         }
