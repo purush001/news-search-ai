@@ -35,8 +35,9 @@ Environment variables (all optional): `OPENAI_MODEL`, `OPENAI_BASE_URL`, `SERPAP
 
 ## Vercel
 
-`vercel.json` and `api/[...path].js` run the same API handler as a Vercel function; Vercel builds the Vite app as static
-files. No environment variables are required (optionally `OPENAI_MODEL`). On Vercel (`VERCEL` is set) the handler accepts
+`vercel.json` and `api/index.js` run the same API handler as a Vercel function (`/api/*` is rewritten to `/api?__path=...`
+and the original path is restored in `server/vercel.js`); Vercel builds the Vite app as static
+files. To check a deployment, open `https://<your-domain>/api/health`: it should return `{"ok":true}`. No environment variables are required (optionally `OPENAI_MODEL`). On Vercel (`VERCEL` is set) the handler accepts
 the public host name, still refuses cross-origin writes, and marks the session cookie `Secure`.
 
 **Limitation: sessions are in memory.** Keys and the current research results live in the memory of one function
