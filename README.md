@@ -10,7 +10,8 @@ All three agents use one model (default `gpt-6.1-sol`, override with `OPENAI_MOD
 
 ## Run it
 
-Requires Node 22+ (the test script uses `node --test` globs).
+Requires Node 22 (`engines.node` is pinned to `22.x`; the test script uses `node --test` globs, which need Node 21+).
+This project is tested on Node 22 only. Other versions may work locally, but npm will warn.
 
 ```bash
 npm install
@@ -39,6 +40,18 @@ Environment variables (all optional): `OPENAI_MODEL`, `OPENAI_BASE_URL`, `SERPAP
 and the original path is restored in `server/vercel.js`); Vercel builds the Vite app as static
 files. To check a deployment, open `https://<your-domain>/api/health`: it should return `{"ok":true}`. No environment variables are required (optionally `OPENAI_MODEL`). On Vercel (`VERCEL` is set) the handler accepts
 the public host name, still refuses cross-origin writes, and marks the session cookie `Secure`.
+
+**Node version.** Vercel takes the Node version from `engines.node` and lets it override the project setting. An open range
+such as `>=22` would make Vercel use the newest Node (26.x at the time of writing), which this project has not been tested
+on, so `engines.node` is pinned to `22.x`. Change it deliberately, and run the tests on the new version first.
+
+**Branches.** Vercel picks a project's *Production Branch* when the project is created: `main` if it exists, otherwise the
+repository's default branch. Merges to it create production deployments; every other branch only gets a preview
+deployment at a different URL. If production does not show a change you merged:
+
+1. In the Vercel project, open Settings, Environments, Production, Branch Tracking, and make sure it names `main`.
+2. In GitHub, make `main` the repository's default branch (Settings, Branches) so the two agree.
+3. Open the latest *production* deployment and confirm its commit is the one you expect, then check `/api/health`.
 
 **Limitation: sessions are in memory.** Keys and the current research results live in the memory of one function
 instance. Vercel may start a new instance or route a request to a different one, and then those are gone: you will see

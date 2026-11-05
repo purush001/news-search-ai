@@ -96,10 +96,15 @@ test('drafting agents see URLs only where needed: X yes, LinkedIn no; one shared
   assert.equal(ideaForModel(idea, undefined).editorialNotes, '');
 });
 
-test('engines.node is new enough for the node --test glob the test script uses', async () => {
-  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+test('engines.node is a pinned major, new enough for the test glob, and package-lock agrees', async () => {
+  const read = async (f) => JSON.parse(await readFile(new URL(f, import.meta.url), 'utf8'));
+  const pkg = await read('../package.json');
+  const lock = await read('../package-lock.json');
+  // Vercel maps open ranges such as ">=22" to the newest Node, so only "<major>.x" is accepted.
+  assert.match(pkg.engines.node, /^\d+\.x$/, `engines.node "${pkg.engines.node}" must be a pinned major like 22.x`);
   const major = Number(/(\d+)/.exec(pkg.engines.node)[1]);
   if (/\*/.test(pkg.scripts.test)) assert.ok(major >= 21, `engines ${pkg.engines.node} cannot expand test globs`);
+  assert.equal(lock.packages[''].engines.node, pkg.engines.node, 'package-lock.json must match package.json');
 });
 
 test('research keeps only what widening and drafting need in session memory', async (t) => {
