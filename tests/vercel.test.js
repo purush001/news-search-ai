@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createApi } from '../server/app.js';
-import { createVercelHandler } from '../server/vercel.js';
+import { createVercelHandler, restoreApiUrl } from '../server/vercel.js';
 import { startMockOpenAI } from '../server/mock/openai.js';
 import { startMockSerpApi } from '../server/mock/serpapi.js';
 import { listen } from '../server/mock/util.js';
@@ -133,7 +133,43 @@ test('vercel.json serves the same security headers as npm start, and routes the 
   const cfg = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
   const configured = Object.fromEntries(cfg.headers.find((h) => h.source === '/(.*)').headers.map((h) => [h.key.toLowerCase(), h.value]));
   assert.deepEqual(configured, SECURITY_HEADERS);
-  assert.ok(cfg.functions['api/[...path].js'].maxDuration >= 30, 'research needs more than the 10s default');
+  assert.ok(cfg.functions['api/index.js'].maxDuration >= 30, 'research needs more than the 10s default');
+  assert.deepEqual(cfg.rewrites, [{ source: '/api/:path*', destination: '/api?__path=:path*' }]);
   const { access } = await import('node:fs/promises');
-  await access(new URL('../api/[...path].js', import.meta.url));
+  await access(new URL('../api/index.js', import.meta.url));
+  // function patterns in vercel.json are globs: no bracket characters (they would be read as a character class)
+  assert.ok(!Object.keys(cfg.functions).some((k) => /[[\]]/.test(k)));
+});
+
+test('restoreApiUrl rebuilds the original path from the rewrite and refuses anything that could escape /api', () => {
+  assert.equal(restoreApiUrl('/api?__path=session/keys'), '/api/session/keys');
+  assert.equal(restoreApiUrl('/api?__path=health'), '/api/health');
+  assert.equal(restoreApiUrl('/api?__path=research/widen&x=1'), '/api/research/widen?x=1');
+  assert.equal(restoreApiUrl('/api?__path='), '/api');
+  assert.equal(restoreApiUrl('/api/session'), '/api/session', 'direct requests pass through untouched');
+  assert.equal(restoreApiUrl('/api'), '/api');
+  for (const evil of ['..%2F..%2Fetc', '../x', 'a/../b', 'a%2f..%2fb', 'x?y', 'a b', '%00', '//evil.example/x']) {
+    const out = restoreApiUrl(`/api?__path=${evil}`);
+    assert.ok(out === '/api/__invalid' || out.startsWith('/api/'), `${evil} -> ${out}`);
+    assert.ok(!out.includes('..'), `${evil} -> ${out}`);
+  }
+  assert.equal(restoreApiUrl('/api?__path=a/../b'), '/api/__invalid');
+});
+
+test('hosted: requests arriving the way the rewrite delivers them (/api?__path=...) are routed correctly end to end', async (t) => {
+  const { client } = await hostedStack(t);
+  const health = await client.get('/api?__path=health');
+  assert.equal(health.status, 200);
+  assert.deepEqual(health.json, { ok: true });
+  const saved = await client.put('/api?__path=session/keys', { openaiKey: OPENAI_KEY, serpapiKey: SERP_KEY });
+  assert.equal(saved.status, 200, saved.text);
+  const status = await client.get('/api?__path=session');
+  assert.equal(status.json.hasOpenAI, true);
+  const r = await client.post('/api?__path=research', { mode: '24h' });
+  assert.equal(r.status, 200);
+  const unknown = await client.get('/api?__path=nope');
+  assert.equal(unknown.status, 404);
+  assert.equal(unknown.json.error.code, 'not_found');
+  const sneaky = await client.get('/api?__path=..%2F..%2Fsession');
+  assert.equal(sneaky.status, 404);
 });
